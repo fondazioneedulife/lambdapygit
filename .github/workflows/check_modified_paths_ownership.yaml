@@ -1,0 +1,140 @@
+name: "Check modified paths ownership"
+
+on:
+  pull_request:
+    types: [ opened, synchronize, reopened, edited ]
+
+permissions:
+  contents: read
+
+jobs:
+  codeowners-check:
+    name: Codeowners check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.x'
+
+      - name: Install Python deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests pathspec
+
+      - name: Verify PR author is CODEOWNER for changed files
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_EVENT_PATH: ${{ github.event_path }}
+        run: |
+          python - <<'PY'
+          import os, json, sys, requests
+          from pathspec import PathSpec
+
+          # Read event & repo info
+          event_path = os.environ.get("GITHUB_EVENT_PATH")
+          repo = os.environ.get("GITHUB_REPOSITORY")
+          if not event_path or not repo:
+            print("Missing environment. Exiting.")
+            sys.exit(1)
+
+          owner, repo_name = repo.split("/")
+          with open(event_path) as f:
+            ev = json.load(f)
+
+          pr = ev.get("pull_request", {})
+          pr_number = pr.get("number")
+          pr_author = pr.get("user", {}).get("login")
+
+          if not pr_number or not pr_author:
+            print("No pull_request payload or missing PR data; skipping.")
+            sys.exit(0)
+
+          headers = {
+            "Authorization": f"token {os.environ['GITHUB_TOKEN']}",
+            "Accept": "application/vnd.github+json"
+          }
+
+          # Fetch list of changed files on the PR (paginated)
+          files = []
+          page = 1
+          while True:
+            url = f"https://api.github.com/repos/{owner}/{repo_name}/pulls/{pr_number}/files?page={page}&per_page=100"
+            r = requests.get(url, headers=headers)
+            r.raise_for_status()
+            batch = r.json()
+            if not batch:
+              break
+            files.extend([finfo["filename"] for finfo in batch])
+            page += 1
+
+          print(f"Changed files: {len(files)}")
+
+          # Locate CODEOWNERS file in common locations (checkout step placed files on runner)
+          possible_paths = [".github/CODEOWNERS", "CODEOWNERS", "docs/CODEOWNERS"]
+          codeowners_lines = None
+          codeowners_path = None
+          for p in possible_paths:
+            if os.path.exists(p):
+              with open(p, "r") as fh:
+                codeowners_lines = fh.readlines()
+              codeowners_path = p
+              break
+
+          if codeowners_lines is None:
+            print("No CODEOWNERS file found in repo. Failing check.")
+            sys.exit(1)
+
+          print(f"Using CODEOWNERS at: {codeowners_path}")
+
+          # Parse CODEOWNERS lines into (pattern, owners) preserving order
+          entries = []
+          for line in codeowners_lines:
+            line = line.strip()
+            if not line or line.startswith("#"):
+              continue
+            parts = line.split()
+            if len(parts) < 2:
+              continue
+            pattern = parts[0]
+            owners = parts[1:]
+            entries.append((pattern, owners))
+
+          # Build pathspec objects for each pattern (in the same order as CODEOWNERS)
+          ps_entries = []
+          for pattern, owners in entries:
+            try:
+              ps = PathSpec.from_lines("gitwildmatch", [pattern])
+            except Exception as e:
+              # Fallback: treat literal pattern
+              ps = PathSpec.from_lines("gitwildmatch", [pattern])
+            ps_entries.append((ps, owners))
+
+          # For each changed file, find the last matching CODEOWNERS entry (last match wins)
+          failures = []
+          for fpath in files:
+            matched_owners = None
+            for ps, owners in ps_entries:
+              if ps.match_file(fpath):
+                matched_owners = owners
+            if matched_owners is None:
+              # No owner specified for this file → treat as failure (change this behavior if you prefer)
+              failures.append((fpath, None))
+            else:
+              normalized = [o.lstrip("@") for o in matched_owners]
+              if pr_author not in normalized:
+                failures.append((fpath, matched_owners))
+
+          if failures:
+            print("PR author is NOT listed as CODEOWNER for the following changed files:")
+            for fpath, owners in failures:
+              print(f"- {fpath}   owners: {owners}")
+            sys.exit(1)
+
+          print("All changed files are owned by the PR author.")
+          sys.exit(0)
+          PY

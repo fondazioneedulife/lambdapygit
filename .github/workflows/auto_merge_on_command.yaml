@@ -1,0 +1,97 @@
+name: "Auto merge on command"
+
+on:
+  issue_comment:
+    types: [ created ]
+
+jobs:
+  merge-on-command:
+    runs-on: ubuntu-latest
+    if: github.event.issue.pull_request != null
+    steps:
+      - name: Run /merge command handler
+        uses: actions/github-script@v6
+        with:
+          github-token: ${{ secrets.AUTOMERGER_TOKEN }}
+          script: |
+            // Only respond to an exact "/merge" (optionally allow whitespace)
+            const commentBody = context.payload.comment && context.payload.comment.body;
+            if (!commentBody || !/^\/merge\s*$/i.test(commentBody.trim())) {
+              core.info('No /merge command found in comment — exiting.');
+              return;
+            }
+
+            // Ensure this is a PR comment
+            if (!context.payload.issue || !context.payload.issue.pull_request) {
+              core.info('Comment is not on a pull request — exiting.');
+              return;
+            }
+
+            const prNumber = context.payload.issue.number;
+            const { owner, repo } = context.repo;
+
+            core.info(`/merge requested on PR #${prNumber} in ${owner}/${repo}`);
+
+            // Get the PR to obtain head SHA
+            const { data: pr } = await github.rest.pulls.get({
+              owner,
+              repo,
+              pull_number: prNumber,
+            });
+
+            const headSha = pr.head.sha;
+
+            // Look for the Codeowners check run by name (must match the check name used by your workflow)
+            const checkRuns = await github.rest.checks.listForRef({
+              owner,
+              repo,
+              ref: headSha,
+            });
+
+            core.info(`Found ${checkRuns.data.total_count} check run(s) on head ${headSha}`);
+
+            // Name must match the exact check run name from your codeowners workflow
+            const TARGET_CHECK_NAME = 'Codeowners check';
+
+            const codeownerRun = checkRuns.data.check_runs.find(r => r.name === TARGET_CHECK_NAME);
+
+            if (!codeownerRun) {
+              const body = `Impossibile fare il merge: il check "${TARGET_CHECK_NAME}" non è stato trovato. Assicurati che i check siano stati eseguiti prima di richiedere il merge.`;
+              await github.rest.issues.createComment({ owner, repo, issue_number: prNumber, body });
+              core.error("Permission check hasn't run.");
+              return;
+            }
+
+            if (codeownerRun.conclusion !== 'success' || codeownerRun.status !== 'completed') {
+              const body = `Impossibile fare il merge: il check "${TARGET_CHECK_NAME}" non ha avuto successo (status=${codeownerRun.status}, conclusion=${codeownerRun.conclusion}). Controlla di aver modificato solo file di tua proprietà e riprova.`;
+              await github.rest.issues.createComment({ owner, repo, issue_number: prNumber, body });
+              core.error("User is not authorized to merge.");
+              return;
+            }
+
+            core.info(`"${TARGET_CHECK_NAME}" succeeded — proceeding to merge.`);
+
+            // Attempt to merge the PR. Choose merge_method: "merge", "squash" or "rebase"
+            try {
+              const mergeResp = await github.rest.pulls.merge({
+                owner,
+                repo,
+                pull_number: prNumber,
+                merge_method: 'rebase',
+              });
+
+              if (mergeResp.status === 200 && mergeResp.data.merged) {
+                const body = `Merge automatico effettuato con successo.`;
+                await github.rest.issues.createComment({ owner, repo, issue_number: prNumber, body });
+                core.info('Merge succeeded.');
+              } else {
+                const body = `Tentativo di merge fallito con il seguente errore: ${JSON.stringify(mergeResp.data)}`;
+                await github.rest.issues.createComment({ owner, repo, issue_number: prNumber, body });
+                throw new Error(`Merge failed: ${JSON.stringify(mergeResp.data)}`);
+              }
+            } catch (err) {
+              // If branch protection or other constraints prevent merge, report back with the reason
+              const msg = `Tentativo di merge fallito con il seguente errore: ${err.message || err}`;
+              await github.rest.issues.createComment({ owner, repo, issue_number: prNumber, body: msg });
+              throw new Error(`Merge failed: ${err.message || err}`);
+            }
