@@ -1,4 +1,5 @@
 print ("Hello World!")
 print ("Nintendo 64")
+print ("PlayStation Sony 1994")
 print ("1+1")
 print (1+1)
