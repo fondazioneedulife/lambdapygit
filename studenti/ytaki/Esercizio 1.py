@@ -26,25 +26,14 @@ while risposta == "si":
 
 print("Fine programma")
 
-""""
 giorni = [0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
 
 mese1 = eval(input("Inserisci il primo mese: "))
 mese2 = eval(input("Inserisci il secondo mese: "))
-giorno1 = 0
-giorno2 = 0
 differenza = 0
-i = 0 
 
 for i in range(1,13):
-    if giorni[i] == mese1:
-        giorno1 = i
-    elif giorni[i] == mese2:
-        giorno2 = i
-i = 0
-for g in range(mese1, mese2):
-    for i in range(1,13):
-        if(i>=mese1 and i<=mese2):
-            differenza = differenza + i
+    if(i> (mese1 - 1) and i< (mese2 + 1)):
+        differenza = differenza + giorni[i]
 
-print("La differenza dei giorni tra i due mesi è di ", differenza) """
+print("La differenza dei giorni tra i due mesi è di", differenza)
