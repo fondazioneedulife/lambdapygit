@@ -27,5 +27,5 @@ while True:
    continua = input("Vuoi fare un'altra operazione? (s/n): ")
 
    if continua.lower() != "s":
-      print("Programma Terminato.")
+      print("Programma terminato.")
       break
