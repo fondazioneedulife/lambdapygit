@@ -39,7 +39,8 @@ while continuare:
 
         risultato = n1/n2
         print(risultato)
-
+    
+    #da finire!!
     elif operazione == "gg":
 
         g1 = int(input("Inserisci il giorno 1: "))
