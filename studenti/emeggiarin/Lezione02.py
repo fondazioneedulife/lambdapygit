@@ -31,7 +31,7 @@ while True:
    continua = input("Vuoi fare un'altra operazione? (s/n): ")
 
    if continua.lower() != "s":
-      print("Programma Terminato.")
+      print("Programma terminato.")
       break
    
    giorni = [0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
