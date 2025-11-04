@@ -1,5 +1,3 @@
-
-
 while True:
    try:
       num1 = float(input("Inserisci numero 1: "))
