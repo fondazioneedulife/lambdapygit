@@ -79,6 +79,12 @@ if(mese2 >= 12):
 
 totale_anno = totale_anno1 + totale_anno2
 
+if anno1 == anno2:
+    if anno1%400 == 0 and anno1%4 == 0:
+        totale_anno = totale_anno - 366
+    else:
+        totale_anno = totale_anno - 365
+
 if anno1+1 < anno2: # se non sono sullo stesso anno, sommo tutti i giorni degli anni nel mezzo
     for anno in range(anno1+1, anno2):
         giorni_anno = 366 if anno%400 == 0 and anno%4 == 0 else 365
