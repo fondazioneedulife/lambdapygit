@@ -77,7 +77,7 @@ jobs:
                 owner,
                 repo,
                 pull_number: prNumber,
-                merge_method: 'rebase',
+                merge_method: 'squash',
               });
 
               if (mergeResp.status === 200 && mergeResp.data.merged) {
