@@ -4,8 +4,6 @@ from .models import Topic
 def index(request):
     """Home page di learning logs"""
     return render(request, "learning_logs/index.html")
-<<<<<<< HEAD
-=======
 
 def topics(request):
     """mostra tutte le materie"""
@@ -19,4 +17,3 @@ def topic(request, topic_id):
     entries = topic.entry_set.order_by('-date_added')
     context = {"topic": topic, "entries": entries}
     return render(request, "learning_logs/topic.html", context)
->>>>>>> 23712a1 (aggiunta lista di materie e pagina di topic per ogni materia)
